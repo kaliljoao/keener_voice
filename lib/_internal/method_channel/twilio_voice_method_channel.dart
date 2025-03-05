@@ -280,6 +280,13 @@ class MethodChannelTwilioVoice extends TwilioVoicePlatform {
     return _channel.invokeMethod('updateCallKitIcon', <String, dynamic>{"icon": icon});
   }
 
+  /// Get registered device token
+  /// Only for IOS
+  @override
+  Future<String?> getDeviceToken() {
+    return _channel.invokeMethod('getDeviceToken');
+  }
+
   /// Register clientId for background calls
   ///
   /// Register the client name for incoming calls while calling using ids

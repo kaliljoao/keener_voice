@@ -172,6 +172,10 @@ abstract class TwilioVoicePlatform extends SharedPlatformInterface {
   /// Register the client name for incoming calls while calling using ids
   Future<bool?> registerClient(String clientId, String clientName);
 
+
+  /// Returns the device token registered IOS only
+  Future<String?> getDeviceToken();
+
   /// Unregister clientId for background calls
   Future<bool?> unregisterClient(String clientId);
 
