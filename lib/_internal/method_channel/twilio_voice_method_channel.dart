@@ -284,7 +284,7 @@ class MethodChannelTwilioVoice extends TwilioVoicePlatform {
   /// Only for IOS
   @override
   Future<String?> getDeviceToken() {
-    return _channel.invokeMethod('getDeviceToken');
+    return _channel.invokeMethod<String?>('getDeviceToken', {}).then<String>((String? value) => value ?? "");
   }
 
   /// Register clientId for background calls

@@ -151,7 +151,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             if(self.deviceToken != nil) {
                 result(self.deviceToken);
             } else {
-                result(nil);
+                result("");
             }
         }
         else if flutterCall.method == "isMuted"
