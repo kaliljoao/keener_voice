@@ -148,11 +148,12 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         }
         else if flutterCall.method == "getDeviceToken"
         {
-            if(self.deviceToken != nil) {
-                result(self.deviceToken);
-            } else {
-                result("");
-            }
+             guard let token = self.deviceToken else {
+                    result(FlutterError(code: "DEVICE_TOKEN_NOT_FOUND", message: "Device token not available", details: nil))
+                    return
+                }
+                let tokenString = token.map { String(format: "%02.2hhx", $0) }.joined()
+                result(tokenString)
         }
         else if flutterCall.method == "isMuted"
         {
