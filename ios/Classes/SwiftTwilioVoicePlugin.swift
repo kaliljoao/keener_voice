@@ -533,18 +533,19 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         
         if (type == PKPushType.voIP) {
             TwilioVoiceSDK.handleNotification(payload.dictionaryPayload, delegate: self, delegateQueue: nil)
-        }
-        
-        if let version = Float(UIDevice.current.systemVersion), version < 13.0 {
-            // Save for later when the notification is properly handled.
-            self.incomingPushCompletionCallback = completion
-        } else {
-            /**
-             * The Voice SDK processes the call notification and returns the call invite synchronously. Report the incoming call to
-             * CallKit and fulfill the completion before exiting this callback method.
-             */
             completion()
         }
+        
+//        if let version = Float(UIDevice.current.systemVersion), version < 13.0 {
+//            // Save for later when the notification is properly handled.
+//            self.incomingPushCompletionCallback = completion
+//        } else {
+//            /**
+//             * The Voice SDK processes the call notification and returns the call invite synchronously. Report the incoming call to
+//             * CallKit and fulfill the completion before exiting this callback method.
+//             */
+//            completion()
+//        }
     }
     
     func incomingPushHandled() {
