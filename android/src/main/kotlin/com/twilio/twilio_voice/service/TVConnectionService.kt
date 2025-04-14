@@ -649,9 +649,22 @@ class TVConnectionService : ConnectionService() {
         params.getExtra(TVParameters.PARAM_SUBJECT, null)?.let {
             connection.extras.putString(TelecomManager.EXTRA_CALL_SUBJECT, it)
         }
-        val name = if(connection.callDirection == CallDirection.OUTGOING) params.to else params.from
-        connection.setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, name, null), TelecomManager.PRESENTATION_ALLOWED)
-        connection.setCallerDisplayName(name, TelecomManager.PRESENTATION_ALLOWED)
+        
+        // Get the base name from the direction
+        val baseName = if(connection.callDirection == CallDirection.OUTGOING) params.to else params.from
+        
+        // Handle caller display name based on custom parameters
+        val customParams = params.getExtra(TVParameters.PARAM_CUSTOM_PARAMS, null) as? Map<String, String>
+        val displayName = when {
+            customParams != null && customParams.containsKey("company") && customParams.containsKey("contact") -> 
+                "${customParams["company"]}: ${customParams["contact"]}"
+            customParams != null && customParams.containsKey("contact") -> 
+                customParams["contact"]!!
+            else -> baseName
+        }
+        
+        connection.setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, baseName, null), TelecomManager.PRESENTATION_ALLOWED)
+        connection.setCallerDisplayName(displayName, TelecomManager.PRESENTATION_ALLOWED)
     }
 
     private fun sendBroadcastEvent(ctx: Context, event: String, callSid: String?, extras: Bundle? = null) {

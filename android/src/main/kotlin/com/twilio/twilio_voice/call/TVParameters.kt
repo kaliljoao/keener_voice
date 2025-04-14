@@ -32,5 +32,6 @@ interface TVParameters {
         val PARAM_CALLER_URL: String = "__TWI_CALLER_URL"
         val PARAM_RECIPIENT_URL: String = "__TWI_RECIPIENT_URL"
         val PARAM_SUBJECT: String = "__TWI_SUBJECT"
+        val PARAM_CUSTOM_PARAMS: String = "__TWI_CUSTOM_PARAMS"
     }
 }
