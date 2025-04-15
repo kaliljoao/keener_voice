@@ -654,11 +654,11 @@ class TVConnectionService : ConnectionService() {
         val baseName = if(connection.callDirection == CallDirection.OUTGOING) params.to else params.from
         
         // Handle caller display name based on custom parameters
-        val customParams = params.getExtra(TVParameters.PARAM_CUSTOM_PARAMS, null) as? Map<String, String>
+        val customParams = params.customParameters
         val displayName = when {
-            customParams != null && customParams.containsKey("company") && customParams.containsKey("contact") -> 
+            customParams.containsKey("company") && customParams.containsKey("contact") -> 
                 "${customParams["company"]}: ${customParams["contact"]}"
-            customParams != null && customParams.containsKey("contact") -> 
+            customParams.containsKey("contact") -> 
                 customParams["contact"]!!
             else -> baseName
         }
