@@ -899,11 +899,6 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         callUpdate.supportsUngrouping = false
         callUpdate.hasVideo = false
         
-        // Add custom parameters to the call update if they exist
-        if let customParams = customParameters {
-            callUpdate.customParameters = customParams
-        }
-        
         callKitProvider.reportNewIncomingCall(with: uuid, update: callUpdate) { error in
             if let error = error {
                 self.sendPhoneCallEvents(description: "LOG|Failed to report incoming call successfully: \(error.localizedDescription).", isError: false)
