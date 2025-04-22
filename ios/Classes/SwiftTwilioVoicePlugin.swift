@@ -24,7 +24,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     var accessToken:String?
     var identity = "alice"
     var callTo: String = "error"
-    var defaultCaller = "Unknown Caller"
+    var defaultCaller = "Talkpad"
     var deviceToken: Data? {
         get{UserDefaults.standard.data(forKey: kCachedDeviceToken)}
         set{UserDefaults.standard.setValue(newValue, forKey: kCachedDeviceToken)}
