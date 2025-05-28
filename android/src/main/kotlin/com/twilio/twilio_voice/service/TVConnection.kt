@@ -48,8 +48,14 @@ class TVCallInviteConnection(
         Log.d(TAG, "onAnswer: onAnswer")
         super.onAnswer()
         twilioCall = callInvite.accept(context, this)
+        // onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
+        //     putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
+        //     putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
+        // })
         onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
-            putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
+            // PATCH: Não envie o objeto CallInvite!
+            // putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
+            putString(TVBroadcastReceiver.EXTRA_CALL_SID, callInvite.callSid)
             putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
         })
     }
