@@ -55,7 +55,7 @@ class TVCallInviteConnection(
         onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
             // PATCH: Não envie o objeto CallInvite!
             // putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
-            putString(TVBroadcastReceiver.EXTRA_CALL_SID, callInvite.callSid)
+            putString(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite.callSid)
             putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
         })
     }
@@ -74,11 +74,45 @@ class TVCallInviteConnection(
         Log.d(TAG, "onReject: onReject")
         super.onReject()
         callInvite.reject(context)
-        // if the call was answered, then immediately rejected/ended, we need to disconnect the call also
-        twilioCall?.let {
-            Log.d(TAG, "onReject: disconnecting call")
-            it.disconnect()
+
+        // Só desconecte se a chamada ativa for a mesma do invite rejeitado
+        if (twilioCall != null && twilioCall?.sid == callInvite.callSid) {
+            Log.d(TAG, "onReject: disconnecting call (same as invite)")
+            twilioCall?.disconnect()
         }
+
+        // PATCH: Requisitar foco de áudio explicitamente após rejeitar
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isMicrophoneMute = false
+            audioManager.isSpeakerphoneOn = false // ou true, conforme sua lógica
+
+            // Solicitar foco de áudio explicitamente
+            audioManager.requestAudioFocus(
+                null,
+                android.media.AudioManager.STREAM_VOICE_CALL,
+                android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "onReject: erro ao restaurar foco de áudio", e)
+        }
+
+        // PATCH: Garantir que a chamada ativa não está em mute/hold
+        twilioCall?.let { call ->
+            call.mute(false)
+            call.hold(false)
+        }
+
+        // Trazer o app para foreground ao recusar a ligação
+        try {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            context.startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "onReject: erro ao trazer app para foreground", e)
+        }
+
         onEvent?.onChange(TVNativeCallEvents.EVENT_DISCONNECTED_LOCAL, null)
         onDisconnected?.withValue(DisconnectCause(DisconnectCause.REJECTED))
         onAction?.onChange(TVNativeCallActions.ACTION_REJECTED, null)
