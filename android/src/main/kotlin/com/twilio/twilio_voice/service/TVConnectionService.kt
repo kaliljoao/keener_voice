@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -172,6 +173,9 @@ class TVConnectionService : ConnectionService() {
          * Extra used with [ACTION_TOGGLE_MUTE] to send additional parameters to the [TVCallConnection] active call.
          */
         const val EXTRA_MUTE_STATE: String = "EXTRA_MUTE_STATE"
+
+        const val ACTION_START_FOREGROUND = "ACTION_START_FOREGROUND"
+
         //endregion
 
         fun hasActiveCalls(): Boolean {
@@ -217,6 +221,9 @@ class TVConnectionService : ConnectionService() {
         super.onStartCommand(intent, flags, startId)
         intent?.let {
             when (it.action) {
+                ACTION_START_FOREGROUND -> {
+                    startForegroundService()
+                }
                 ACTION_SEND_DIGITS -> {
                     val callHandle = it.getStringExtra(EXTRA_CALL_HANDLE) ?: getActiveCallHandle() ?: run {
                         Log.e(TAG, "onStartCommand: ACTION_SEND_DIGITS is missing String EXTRA_CALL_HANDLE")
@@ -490,6 +497,14 @@ class TVConnectionService : ConnectionService() {
             throw Exception("onCreateIncomingConnection: request is missing Bundle EXTRA_INCOMING_CALL_EXTRAS");
         }
 
+        // No início da chamada, solicite o foco:
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.requestAudioFocus(
+            audioFocusChangeListener,
+            AudioManager.STREAM_VOICE_CALL,
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+        )
+
         myBundle.classLoader = CallInvite::class.java.classLoader
         val ci: CallInvite = myBundle.getParcelableSafe(EXTRA_INCOMING_CALL_INVITE) ?: run {
             Log.e(TAG, "onCreateIncomingConnection: request is missing CallInvite EXTRA_INCOMING_CALL_INVITE")
@@ -526,6 +541,14 @@ class TVConnectionService : ConnectionService() {
 
         super.onCreateOutgoingConnection(connectionManagerPhoneAccount, request)
         Log.d(TAG, "onCreateOutgoingConnection")
+
+        // No início da chamada, solicite o foco:
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.requestAudioFocus(
+            audioFocusChangeListener,
+            AudioManager.STREAM_VOICE_CALL,
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+        )
 
         val extras = request?.extras
         val myBundle: Bundle = extras?.getBundle(EXTRA_OUTGOING_PARAMS) ?: run {
@@ -759,4 +782,26 @@ class TVConnectionService : ConnectionService() {
             Log.w(TAG, "[VoiceConnectionService] can't stop foreground service :$e")
         }
     }
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                audioManager.isMicrophoneMute = false
+                // Desmute todas as chamadas Twilio ativas
+                activeConnections.values.forEach { connection ->
+                    connection.twilioCall?.mute(false)
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                // Opcional: mute todas as chamadas Twilio ativas
+                activeConnections.values.forEach { connection ->
+                    connection.twilioCall?.mute(true)
+                }
+            }
+        }
+    }
+
+   
 }

@@ -118,6 +118,14 @@ class TVCallInviteConnection(
         onAction?.onChange(TVNativeCallActions.ACTION_REJECTED, null)
         setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
         destroy()
+
+         try {
+            val intent = Intent(context, TVConnectionService::class.java)
+            intent.action = TVConnectionService.ACTION_START_FOREGROUND
+            context.startService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "onReject: erro ao iniciar foreground service", e)
+        }
     }
 }
 
@@ -544,4 +552,5 @@ open class TVCallConnection(
             Log.e(TAG, "sendDigits: Unable to send digits, active call is null")
         }
     }
+
 }
