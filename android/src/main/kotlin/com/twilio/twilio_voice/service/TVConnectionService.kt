@@ -502,7 +502,7 @@ class TVConnectionService : ConnectionService() {
         audioManager.requestAudioFocus(
             audioFocusChangeListener,
             AudioManager.STREAM_VOICE_CALL,
-            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            AudioManager.AUDIOFOCUS_GAIN
         )
 
         myBundle.classLoader = CallInvite::class.java.classLoader
@@ -547,7 +547,7 @@ class TVConnectionService : ConnectionService() {
         audioManager.requestAudioFocus(
             audioFocusChangeListener,
             AudioManager.STREAM_VOICE_CALL,
-            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            AudioManager.AUDIOFOCUS_GAIN
         )
 
         val extras = request?.extras
@@ -794,11 +794,15 @@ class TVConnectionService : ConnectionService() {
                     connection.twilioCall?.mute(false)
                 }
             }
-            AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                // Opcional: mute todas as chamadas Twilio ativas
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                // Apenas mute em caso de perda permanente de foco
                 activeConnections.values.forEach { connection ->
                     connection.twilioCall?.mute(true)
                 }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                // Não mute em caso de perda temporária de foco para evitar mute desnecessário
+                Log.d(TAG, "AudioFocus lost temporarily, not muting calls")
             }
         }
     }

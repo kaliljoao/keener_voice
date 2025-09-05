@@ -4,7 +4,7 @@ import android.telecom.CallAudioState
 
 object CallAudioStateExtension {
     fun CallAudioState.copyWith(muted: Boolean): CallAudioState {
-        return CallAudioState(muted ?: this.isMuted, route ?: this.route, supportedRouteMask ?: this.supportedRouteMask)
+        return CallAudioState(muted, this.route, this.supportedRouteMask)
     }
 
     fun CallAudioState.copyWith(route: Int): CallAudioState {
