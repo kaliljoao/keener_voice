@@ -491,6 +491,9 @@ class TVConnectionService : ConnectionService() {
         super.onCreateIncomingConnection(connectionManagerPhoneAccount, request)
         Log.d(TAG, "onCreateIncomingConnection")
 
+        // Start foreground service immediately to ensure microphone access
+        startForegroundService()
+
         val extras = request?.extras
         val myBundle: Bundle = extras?.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS) ?: run {
             Log.e(TAG, "onCreateIncomingConnection: request is missing Bundle EXTRA_INCOMING_CALL_EXTRAS")
@@ -531,7 +534,6 @@ class TVConnectionService : ConnectionService() {
         applyParameters(connection, callParams)
         connection.setRinging()
 
-        startForegroundService()
         return connection
     }
 
@@ -744,10 +746,14 @@ class TVConnectionService : ConnectionService() {
 
         return Notification.Builder(this, channel.id).apply {
             setOngoing(true)
-            setContentTitle("Voice Calls")
+            setContentTitle("Voice Calls Active")
+            setContentText("Microphone access maintained for incoming calls")
             setCategory(Notification.CATEGORY_SERVICE)
             setContentIntent(pendingIntent)
             setSmallIcon(R.drawable.ic_microphone)
+            setPriority(Notification.PRIORITY_LOW)
+            setShowWhen(false)
+            setAutoCancel(false)
         }.build()
     }
 
@@ -762,13 +768,30 @@ class TVConnectionService : ConnectionService() {
         Log.d(TAG, "[VoiceConnectionService] Starting foreground service")
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Optional for Android +11, required for Android +14
+                // Required for Android 11+ and especially Android 14+
                 startForeground(SERVICE_TYPE_MICROPHONE, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } else {
                 startForeground(SERVICE_TYPE_MICROPHONE, notification)
             }
+            
+            // Ensure audio focus is maintained
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.requestAudioFocus(
+                audioFocusChangeListener,
+                AudioManager.STREAM_VOICE_CALL,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+            
+            Log.d(TAG, "[VoiceConnectionService] Foreground service started successfully with microphone access")
         } catch (e: Exception) {
             Log.w(TAG, "[VoiceConnectionService] Can't start foreground service : $e")
+            // Try fallback without microphone type for older versions
+            try {
+                startForeground(SERVICE_TYPE_MICROPHONE, notification)
+                Log.d(TAG, "[VoiceConnectionService] Fallback foreground service started")
+            } catch (fallbackException: Exception) {
+                Log.e(TAG, "[VoiceConnectionService] Fallback also failed: $fallbackException")
+            }
         }
     }
 
@@ -787,6 +810,7 @@ class TVConnectionService : ConnectionService() {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
+                Log.d(TAG, "AudioFocus gained - restoring microphone access")
                 audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                 audioManager.isMicrophoneMute = false
                 // Desmute todas as chamadas Twilio ativas
@@ -795,14 +819,20 @@ class TVConnectionService : ConnectionService() {
                 }
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
+                Log.d(TAG, "AudioFocus lost permanently - muting calls")
                 // Apenas mute em caso de perda permanente de foco
                 activeConnections.values.forEach { connection ->
                     connection.twilioCall?.mute(true)
                 }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                Log.d(TAG, "AudioFocus lost temporarily - not muting calls to preserve microphone access")
                 // Não mute em caso de perda temporária de foco para evitar mute desnecessário
-                Log.d(TAG, "AudioFocus lost temporarily, not muting calls")
+                // Isso é importante para manter o acesso ao microfone em background
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                Log.d(TAG, "AudioFocus lost temporarily with ducking - maintaining microphone access")
+                // Manter acesso ao microfone mesmo com ducking
             }
         }
     }

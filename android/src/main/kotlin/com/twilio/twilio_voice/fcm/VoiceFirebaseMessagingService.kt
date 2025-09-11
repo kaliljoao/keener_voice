@@ -141,6 +141,12 @@ class VoiceFirebaseMessagingService : FirebaseMessagingService(), MessageListene
             return
         }
 
+        // Start foreground service first to ensure microphone access
+        Intent(applicationContext, TVConnectionService::class.java).apply {
+            action = TVConnectionService.ACTION_START_FOREGROUND
+            applicationContext.startService(this)
+        }
+
         // send broadcast to TVConnectionService, we notify the TelecomManager about incoming call
         Intent(applicationContext, TVConnectionService::class.java).apply {
             action = TVConnectionService.ACTION_INCOMING_CALL
