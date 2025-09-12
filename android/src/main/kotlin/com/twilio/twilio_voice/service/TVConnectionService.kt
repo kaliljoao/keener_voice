@@ -48,6 +48,10 @@ class TVConnectionService : ConnectionService() {
         val TWI_SCHEME: String = "twi"
 
         val SERVICE_TYPE_MICROPHONE: Int = 100
+        
+        // Microphone monitoring
+        private var microphoneMonitorHandler: android.os.Handler? = null
+        private var microphoneMonitorRunnable: Runnable? = null
 
         //region ACTIONS_* Constants
         /**
@@ -201,6 +205,49 @@ class TVConnectionService : ConnectionService() {
 
         fun getConnection(callSid: String): TVCallConnection? {
             return activeConnections[callSid]
+        }
+        
+        fun startMicrophoneMonitoring(context: Context) {
+            stopMicrophoneMonitoring()
+            microphoneMonitorHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            microphoneMonitorRunnable = object : Runnable {
+                override fun run() {
+                    if (hasActiveCalls()) {
+                        try {
+                            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                            if (audioManager.isMicrophoneMute) {
+                                Log.w(TAG, "Microphone was muted - unmuting for active calls")
+                                audioManager.isMicrophoneMute = false
+                            }
+                            
+                            // Ensure all active calls are unmuted
+                            activeConnections.values.forEach { connection ->
+                                connection.twilioCall?.let { call ->
+                                    // Check if call is connected and unmute if needed
+                                    if (call.state == Call.State.CONNECTED) {
+                                        // Note: We can't directly check mute state, so we ensure it's unmuted
+                                        call.mute(false)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in microphone monitoring", e)
+                        }
+                    }
+                    
+                    // Schedule next check in 2 seconds
+                    microphoneMonitorHandler?.postDelayed(this, 2000)
+                }
+            }
+            microphoneMonitorHandler?.post(microphoneMonitorRunnable!!)
+            Log.d(TAG, "Microphone monitoring started")
+        }
+        
+        fun stopMicrophoneMonitoring() {
+            microphoneMonitorHandler?.removeCallbacks(microphoneMonitorRunnable)
+            microphoneMonitorHandler = null
+            microphoneMonitorRunnable = null
+            Log.d(TAG, "Microphone monitoring stopped")
         }
     }
 
@@ -652,6 +699,12 @@ class TVConnectionService : ConnectionService() {
             if (activeConnections.containsKey(callSid)) {
                 activeConnections.remove(callSid)
             }
+            
+            // Stop microphone monitoring if no active calls
+            if (!hasActiveCalls()) {
+                stopMicrophoneMonitoring()
+            }
+            
             stopForegroundService()
             stopSelfSafe()
         }
@@ -663,6 +716,9 @@ class TVConnectionService : ConnectionService() {
         connection.setOnCallActionListener(onAction)
         connection.setOnCallEventListener(onEvent)
         connection.setOnCallDisconnected(onDisconnect)
+        
+        // Start microphone monitoring for active calls
+        startMicrophoneMonitoring(applicationContext)
     }
 
     /**
@@ -819,20 +875,54 @@ class TVConnectionService : ConnectionService() {
                 }
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
-                Log.d(TAG, "AudioFocus lost permanently - muting calls")
-                // Apenas mute em caso de perda permanente de foco
-                activeConnections.values.forEach { connection ->
-                    connection.twilioCall?.mute(true)
+                Log.d(TAG, "AudioFocus lost permanently - attempting to regain focus")
+                // Try to regain audio focus for active calls
+                if (hasActiveCalls()) {
+                    val focusResult = audioManager.requestAudioFocus(
+                        audioFocusChangeListener,
+                        AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN
+                    )
+                    Log.d(TAG, "AudioFocus regain attempt result: $focusResult")
+                    
+                    if (focusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                        Log.d(TAG, "AudioFocus regained successfully")
+                        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                        audioManager.isMicrophoneMute = false
+                        activeConnections.values.forEach { connection ->
+                            connection.twilioCall?.mute(false)
+                        }
+                    } else {
+                        Log.w(TAG, "AudioFocus regain failed - muting calls")
+                        activeConnections.values.forEach { connection ->
+                            connection.twilioCall?.mute(true)
+                        }
+                    }
                 }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                Log.d(TAG, "AudioFocus lost temporarily - not muting calls to preserve microphone access")
-                // Não mute em caso de perda temporária de foco para evitar mute desnecessário
-                // Isso é importante para manter o acesso ao microfone em background
+                Log.d(TAG, "AudioFocus lost temporarily - maintaining microphone access for active calls")
+                // For active calls, try to maintain microphone access
+                if (hasActiveCalls()) {
+                    val focusResult = audioManager.requestAudioFocus(
+                        audioFocusChangeListener,
+                        AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                    )
+                    Log.d(TAG, "AudioFocus transient regain attempt result: $focusResult")
+                }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 Log.d(TAG, "AudioFocus lost temporarily with ducking - maintaining microphone access")
-                // Manter acesso ao microfone mesmo com ducking
+                // Maintain microphone access even with ducking
+                if (hasActiveCalls()) {
+                    val focusResult = audioManager.requestAudioFocus(
+                        audioFocusChangeListener,
+                        AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                    )
+                    Log.d(TAG, "AudioFocus ducking regain attempt result: $focusResult")
+                }
             }
         }
     }

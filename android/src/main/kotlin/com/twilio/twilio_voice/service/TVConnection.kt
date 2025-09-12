@@ -45,16 +45,45 @@ class TVCallInviteConnection(
     }
 
     override fun onAnswer() {
-        Log.d(TAG, "onAnswer: onAnswer")
+        Log.d(TAG, "onAnswer: onAnswer - ensuring microphone access for background calls")
         super.onAnswer()
+        
+        // CRITICAL: Ensure microphone access before accepting the call
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isMicrophoneMute = false
+            
+            // Request audio focus with high priority
+            val focusResult = audioManager.requestAudioFocus(
+                null,
+                android.media.AudioManager.STREAM_VOICE_CALL,
+                android.media.AudioManager.AUDIOFOCUS_GAIN
+            )
+            
+            Log.d(TAG, "onAnswer: Audio focus request result: $focusResult")
+            
+            // Ensure foreground service is active
+            val intent = Intent(context, TVConnectionService::class.java)
+            intent.action = TVConnectionService.ACTION_START_FOREGROUND
+            context.startService(intent)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "onAnswer: Error ensuring microphone access", e)
+        }
+        
         twilioCall = callInvite.accept(context, this)
-        // onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
-        //     putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
-        //     putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
-        // })
+        
+        // Ensure the call is not muted after accepting
+        twilioCall?.let { call ->
+            // Small delay to ensure call is fully established
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                call.mute(false)
+                Log.d(TAG, "onAnswer: Ensured call is unmuted after acceptance")
+            }, 500)
+        }
+        
         onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
-            // PATCH: Não envie o objeto CallInvite!
-            // putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
             putString(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite.callSid)
             putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
         })
@@ -228,9 +257,24 @@ open class TVCallConnection(
     }
 
     override fun onConnected(call: Call) {
-        Log.d(TAG, "onConnected: onConnected")
+        Log.d(TAG, "onConnected: onConnected - ensuring microphone is active")
         twilioCall = call
         setActive()
+        
+        // CRITICAL: Ensure microphone is unmuted when call connects
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isMicrophoneMute = false
+            
+            // Ensure the Twilio call is not muted
+            call.mute(false)
+            
+            Log.d(TAG, "onConnected: Microphone access ensured for connected call")
+        } catch (e: Exception) {
+            Log.e(TAG, "onConnected: Error ensuring microphone access", e)
+        }
+        
         onCallStateListener?.withValue(call.state)
         onEvent?.onChange(TVNativeCallEvents.EVENT_CONNECTED, Bundle().apply {
             putString(TVBroadcastReceiver.EXTRA_CALL_HANDLE, callParams?.callSid)
@@ -269,8 +313,24 @@ open class TVCallConnection(
      * @param call An object model representing a call.
      */
     override fun onReconnected(call: Call) {
+        Log.d(TAG, "onReconnected: onReconnected - ensuring microphone is active after reconnection")
         twilioCall = call
         setActive()
+        
+        // CRITICAL: Ensure microphone is unmuted after reconnection
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isMicrophoneMute = false
+            
+            // Ensure the Twilio call is not muted
+            call.mute(false)
+            
+            Log.d(TAG, "onReconnected: Microphone access ensured after reconnection")
+        } catch (e: Exception) {
+            Log.e(TAG, "onReconnected: Error ensuring microphone access", e)
+        }
+        
         onCallStateListener?.withValue(call.state)
         onEvent?.onChange(TVNativeCallEvents.EVENT_RECONNECTED, Bundle().apply {
             putString(TVBroadcastReceiver.EXTRA_CALL_HANDLE, callParams?.callSid)
