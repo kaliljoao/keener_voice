@@ -239,12 +239,16 @@ class TVConnectionService : ConnectionService() {
                     microphoneMonitorHandler?.postDelayed(this, 2000)
                 }
             }
-            microphoneMonitorHandler?.post(microphoneMonitorRunnable!!)
+            microphoneMonitorRunnable?.let { runnable ->
+                microphoneMonitorHandler?.post(runnable)
+            }
             Log.d(TAG, "Microphone monitoring started")
         }
         
         fun stopMicrophoneMonitoring() {
-            microphoneMonitorHandler?.removeCallbacks(microphoneMonitorRunnable)
+            microphoneMonitorRunnable?.let { runnable ->
+                microphoneMonitorHandler?.removeCallbacks(runnable)
+            }
             microphoneMonitorHandler = null
             microphoneMonitorRunnable = null
             Log.d(TAG, "Microphone monitoring stopped")
@@ -651,8 +655,8 @@ class TVConnectionService : ConnectionService() {
         // Set call state listener, applies non-temporary Call SID when call is ringing or connected (i.e. when assigned by Twilio)
         val onCallStateListener: CompletionHandler<Call.State> = CompletionHandler { state ->
             if (state == Call.State.RINGING || state == Call.State.CONNECTED) {
-                val call = connection.twilioCall!!
-                val callSid = call.sid!!
+                val call = connection.twilioCall ?: return@CompletionHandler
+                val callSid = call.sid ?: return@CompletionHandler
 
                 // Resolve call parameters
                 val callParams = TVCallParametersImpl(mStorage, call, to, from, params)
@@ -740,7 +744,7 @@ class TVConnectionService : ConnectionService() {
             customParams.containsKey("company") && customParams.containsKey("contact") -> 
                 "${customParams["company"]}: ${customParams["contact"]}"
             customParams.containsKey("contact") -> 
-                customParams["contact"]!!
+                customParams["contact"] ?: baseName
             else -> baseName
         }
         
