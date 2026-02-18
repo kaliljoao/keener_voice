@@ -34,6 +34,8 @@ import com.twilio.twilio_voice.types.TelecomManagerExtension.getPhoneAccountHand
 import com.twilio.twilio_voice.types.TelecomManagerExtension.hasCallCapableAccount
 import com.twilio.twilio_voice.types.TelecomManagerExtension.canReadPhoneState
 import com.twilio.twilio_voice.types.TelecomManagerExtension.registerPhoneAccount
+import com.twilio.twilio_voice.types.CallExceptionExtension
+import com.twilio.twilio_voice.types.TVNativeCallEvents
 import com.twilio.twilio_voice.types.ValueBundleChanged
 import com.twilio.voice.*
 import com.twilio.voice.Call
@@ -604,23 +606,23 @@ class TVConnectionService : ConnectionService() {
         )
 
         val extras = request?.extras
-        val myBundle: Bundle = extras?.getBundle(EXTRA_OUTGOING_PARAMS) ?: run {
-            Log.e(TAG, "onCreateOutgoingConnection: request is missing Bundle EXTRA_OUTGOING_PARAMS")
-            throw Exception("onCreateOutgoingConnection: request is missing Bundle EXTRA_OUTGOING_PARAMS");
+        val myBundle: Bundle = resolveOutgoingParamsBundle(extras) ?: run {
+            Log.e(TAG, "onCreateOutgoingConnection: Could not resolve EXTRA_OUTGOING_PARAMS from any strategy. Extras keys: ${extras?.keySet()}")
+            return createFailedOutgoingConnection("Could not resolve outgoing call parameters")
         }
 
         // check required EXTRA_TOKEN, EXTRA_TO, EXTRA_FROM
         val token: String = myBundle.getString(EXTRA_TOKEN) ?: run {
-            Log.e(TAG, "onCreateOutgoingConnection: ACTION_PLACE_OUTGOING_CALL is missing String EXTRA_TOKEN")
-            throw Exception("onCreateOutgoingConnection: ACTION_PLACE_OUTGOING_CALL is missing String EXTRA_TOKEN");
+            Log.e(TAG, "onCreateOutgoingConnection: missing EXTRA_TOKEN")
+            return createFailedOutgoingConnection("Missing access token for outgoing call")
         }
         val to = myBundle.getString(EXTRA_TO) ?: run {
-            Log.e(TAG, "onCreateOutgoingConnection: ACTION_PLACE_OUTGOING_CALL is missing String EXTRA_TO")
-            throw Exception("onCreateOutgoingConnection: ACTION_PLACE_OUTGOING_CALL is missing String EXTRA_TO");
+            Log.e(TAG, "onCreateOutgoingConnection: missing EXTRA_TO")
+            return createFailedOutgoingConnection("Missing 'to' parameter for outgoing call")
         }
         val from = myBundle.getString(EXTRA_FROM) ?: run {
-            Log.e(TAG, "onCreateOutgoingConnection: ACTION_PLACE_OUTGOING_CALL is missing String EXTRA_FROM")
-            throw Exception("onCreateOutgoingConnection: ACTION_PLACE_OUTGOING_CALL is missing String EXTRA_FROM");
+            Log.e(TAG, "onCreateOutgoingConnection: missing EXTRA_FROM")
+            return createFailedOutgoingConnection("Missing 'from' parameter for outgoing call")
         }
 
         // Get all params from bundle
@@ -752,6 +754,67 @@ class TVConnectionService : ConnectionService() {
         connection.setCallerDisplayName(displayName, TelecomManager.PRESENTATION_ALLOWED)
     }
 
+    /**
+     * Attempts to resolve the EXTRA_OUTGOING_PARAMS bundle from the ConnectionRequest extras
+     * using multiple strategies, because Android TelecomManager behavior varies across
+     * OEM implementations and Android versions.
+     */
+    private fun resolveOutgoingParamsBundle(extras: Bundle?): Bundle? {
+        if (extras == null) return null
+
+        // Strategy 1: Direct access (current behavior, works on most devices)
+        extras.getBundle(EXTRA_OUTGOING_PARAMS)?.let { bundle ->
+            Log.d(TAG, "resolveOutgoingParamsBundle: Found via direct access")
+            return bundle
+        }
+
+        // Strategy 2: Nested under EXTRA_OUTGOING_CALL_EXTRAS
+        extras.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS)?.let { outerBundle ->
+            outerBundle.getBundle(EXTRA_OUTGOING_PARAMS)?.let { bundle ->
+                Log.d(TAG, "resolveOutgoingParamsBundle: Found nested under EXTRA_OUTGOING_CALL_EXTRAS")
+                return bundle
+            }
+        }
+
+        // Strategy 3: Keys flattened at top level by TelecomManager
+        if (extras.containsKey(EXTRA_TOKEN) && extras.containsKey(EXTRA_TO) && extras.containsKey(EXTRA_FROM)) {
+            Log.d(TAG, "resolveOutgoingParamsBundle: Found flattened keys at top level")
+            return Bundle().apply {
+                extras.keySet().forEach { key ->
+                    extras.getString(key)?.let { value ->
+                        putString(key, value)
+                    }
+                }
+            }
+        }
+
+        Log.w(TAG, "resolveOutgoingParamsBundle: All strategies exhausted. Available keys: ${extras.keySet()}")
+        return null
+    }
+
+    /**
+     * Creates a Connection that is immediately disconnected with an error cause.
+     * Used instead of throwing exceptions from onCreateOutgoingConnection to prevent app crashes.
+     */
+    private fun createFailedOutgoingConnection(reason: String): Connection {
+        Log.e(TAG, "createFailedOutgoingConnection: $reason")
+
+        val connection = TVCallConnection(applicationContext)
+        connection.setDisconnected(DisconnectCause(DisconnectCause.ERROR, reason))
+        connection.destroy()
+
+        // Notify Flutter of the failure
+        sendBroadcastEvent(applicationContext, TVNativeCallEvents.EVENT_CONNECT_FAILURE, null, Bundle().apply {
+            putInt(CallExceptionExtension.EXTRA_CODE, -1)
+            putString(CallExceptionExtension.EXTRA_MESSAGE, reason)
+        })
+        sendBroadcastEvent(applicationContext, TVNativeCallEvents.EVENT_DISCONNECTED_LOCAL, null)
+
+        stopForegroundService()
+
+        return connection
+    }
+
     private fun sendBroadcastEvent(ctx: Context, event: String, callSid: String?, extras: Bundle? = null) {
         Intent(ctx, TVBroadcastReceiver::class.java).apply {
             action = event
@@ -772,7 +835,15 @@ class TVConnectionService : ConnectionService() {
 
     override fun onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount: PhoneAccountHandle?, request: ConnectionRequest?) {
         super.onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount, request)
-        Log.d(TAG, "onCreateOutgoingConnectionFailed")
+        Log.e(TAG, "onCreateOutgoingConnectionFailed")
+
+        // Notify Flutter of the failure so it can clean up call state
+        sendBroadcastEvent(applicationContext, TVNativeCallEvents.EVENT_CONNECT_FAILURE, null, Bundle().apply {
+            putInt(CallExceptionExtension.EXTRA_CODE, -1)
+            putString(CallExceptionExtension.EXTRA_MESSAGE, "System failed to create outgoing connection")
+        })
+        sendBroadcastEvent(applicationContext, TVNativeCallEvents.EVENT_DISCONNECTED_LOCAL, null)
+
         stopForegroundService()
     }
 

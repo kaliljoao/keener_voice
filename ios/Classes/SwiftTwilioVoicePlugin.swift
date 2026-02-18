@@ -121,13 +121,26 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
                 }
             }
         } else if flutterCall.method == "makeCall" {
-            guard let callTo = arguments["To"] as? String else {return}
-            guard let callFrom = arguments["From"] as? String else {return}
-            self.callArgs = arguments
-            self.callOutgoing = true
-            if let accessToken = arguments["accessToken"] as? String{
+            guard let callTo = arguments["To"] as? String, !callTo.isEmpty else {
+                self.sendPhoneCallEvents(description: "LOG|makeCall failed: missing or empty 'To' parameter", isError: false)
+                self.sendPhoneCallEvents(description: "Call Ended", isError: false)
+                return
+            }
+            guard let callFrom = arguments["From"] as? String, !callFrom.isEmpty else {
+                self.sendPhoneCallEvents(description: "LOG|makeCall failed: missing or empty 'From' parameter", isError: false)
+                self.sendPhoneCallEvents(description: "Call Ended", isError: false)
+                return
+            }
+            if let accessToken = arguments["accessToken"] as? String {
                 self.accessToken = accessToken
             }
+            guard self.accessToken != nil, !self.accessToken!.isEmpty else {
+                self.sendPhoneCallEvents(description: "LOG|makeCall failed: missing access token", isError: false)
+                self.sendPhoneCallEvents(description: "Call Ended", isError: false)
+                return
+            }
+            self.callArgs = arguments
+            self.callOutgoing = true
             self.callTo = callTo
             self.identity = callFrom
             makeCall(to: callTo)
@@ -792,6 +805,8 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
                 provider.reportOutgoingCall(with: action.callUUID, connectedAt: Date())
             } else {
                 self.sendPhoneCallEvents(description: "LOG|provider:performVoiceCall() failed", isError: false)
+                self.sendPhoneCallEvents(description: "Call Ended", isError: false)
+                self.performEndCallAction(uuid: action.callUUID)
             }
         }
         action.fulfill()
@@ -925,7 +940,10 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     }
     
     func performVoiceCall(uuid: UUID, client: String?, completionHandler: @escaping (Bool) -> Swift.Void) {
-        guard let token = accessToken else {
+        guard let token = accessToken, !token.isEmpty else {
+            self.sendPhoneCallEvents(description: "LOG|performVoiceCall failed: missing access token", isError: false)
+            self.sendPhoneCallEvents(description: "Call Ended", isError: false)
+            performEndCallAction(uuid: uuid)
             completionHandler(false)
             return
         }
