@@ -577,7 +577,7 @@ class TVConnectionService : ConnectionService() {
         val connection = TVCallInviteConnection(applicationContext, ci, callParams)
 
         // Remove call invite from extras, causes marshalling error i.e. Class not found.
-        val requestBundle = request.extras.also { it ->
+        val requestBundle = request?.extras?.also { it ->
             it.remove(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS)
         }
         connection.extras = requestBundle
@@ -678,7 +678,7 @@ class TVConnectionService : ConnectionService() {
         connection.setInitializing()
 
         // Apply extras
-        connection.extras = request.extras
+        connection.extras = request?.extras
 
         startForegroundService()
 
